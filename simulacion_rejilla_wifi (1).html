@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulación: Atenuación WiFi con Rejilla</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff;
+    --bg2: #f5f5f5;
+    --bg3: #ebebeb;
+    --text: #1a1a1a;
+    --text2: #555555;
+    --text3: #888888;
+    --border: rgba(0,0,0,0.12);
+    --border2: rgba(0,0,0,0.22);
+    --info: #185fa5;
+    --success: #2e7d32;
+    --warning: #7a4f00;
+    --danger: #a32d2d;
+    --bg-info: #e6f1fb;
+    --bg-success: #eaf3de;
+    --radius: 10px;
+    --radius-lg: 14px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a;
+      --bg2: #242424;
+      --bg3: #2e2e2e;
+      --text: #e8e8e8;
+      --text2: #aaaaaa;
+      --text3: #666666;
+      --border: rgba(255,255,255,0.10);
+      --border2: rgba(255,255,255,0.20);
+      --info: #7ab8f0;
+      --success: #7ecb82;
+      --warning: #f5c860;
+      --danger: #f08080;
+      --bg-info: #0c2a45;
+      --bg-success: #0e2a10;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    background: var(--bg3);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+
+  .card {
+    background: var(--bg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 680px;
+  }
+
+  header { margin-bottom: 1.25rem; }
+  header h1 { font-size: 20px; font-weight: 600; color: var(--text); }
+  header p  { font-size: 13px; color: var(--text2); margin-top: 4px; }
+
+  /* Scene */
+  .scene {
+    position: relative;
+    width: 100%;
+    height: 240px;
+    background: var(--bg2);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+  .scene-label {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: var(--text3); letter-spacing: .03em; white-space: nowrap;
+  }
+  #wave-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  /* Router */
+  .router {
+    position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .router-box {
+    width: 52px; height: 60px; border-radius: 8px;
+    background: var(--bg); border: 1px solid var(--border2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  }
+  .router-ant {
+    width: 3px; height: 16px; background: var(--text2); border-radius: 2px;
+  }
+  .router-icon {
+    font-size: 20px; line-height: 1;
+  }
+  .device-lbl { font-size: 11px; color: var(--text2); }
+
+  /* Grid */
+  .grid-el {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    cursor: pointer; user-select: none;
+  }
+  .grid-el:hover .grid-hint { opacity: 1; }
+  .grid-hint {
+    font-size: 10px; color: var(--text3); opacity: 0;
+    transition: opacity .2s; white-space: nowrap;
+  }
+  .grid-lbl { font-size: 11px; color: var(--text2); text-align: center; }
+
+  /* Phone */
+  .phone {
+    position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .phone-box {
+    width: 40px; height: 66px; border-radius: 8px;
+    background: var(--bg); border: 1px solid var(--border2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    padding: 6px;
+  }
+  .phone-screen {
+    width: 28px; height: 38px; border-radius: 3px;
+    background: var(--bg3);
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    padding-bottom: 4px;
+  }
+  .sig-bars { display: flex; align-items: flex-end; gap: 2px; }
+  .sig-bar { width: 4px; border-radius: 1px; transition: height .4s, background .4s; }
+
+  /* dBm badge */
+  .dbm-badge {
+    position: absolute; right: 72px; top: 10px;
+    background: var(--bg); border: 1px solid var(--border2);
+    border-radius: 8px; padding: 3px 9px;
+    font-size: 13px; font-weight: 600;
+    transition: color .4s;
+  }
+
+  /* Controls */
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
+  @media (max-width: 480px) { .controls { grid-template-columns: 1fr; } }
+
+  .ctrl-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px;
+  }
+  .ctrl-title { font-size: 12px; color: var(--text2); margin-bottom: 8px; }
+
+  .angle-row { display: flex; gap: 6px; }
+  .angle-btn {
+    flex: 1; padding: 6px 2px; font-size: 11px; font-weight: 500;
+    border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border2);
+    background: var(--bg); color: var(--text);
+    transition: all .2s;
+  }
+  .angle-btn:hover { background: var(--bg3); }
+  .angle-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  .dist-row { display: flex; align-items: center; gap: 8px; }
+  input[type=range] {
+    flex: 1; accent-color: var(--info);
+    height: 4px; cursor: pointer;
+  }
+  .dist-val { font-size: 13px; font-weight: 600; min-width: 28px; text-align: right; }
+
+  /* Results */
+  .results {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px; margin-bottom: 1rem;
+  }
+  .results-title { font-size: 12px; color: var(--text2); margin-bottom: 10px; }
+  .results-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media (max-width: 480px) { .results-row { grid-template-columns: repeat(2, 1fr); } }
+
+  .result-cell {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; text-align: center;
+  }
+  .rc-label { font-size: 11px; color: var(--text2); }
+  .rc-val { font-size: 15px; font-weight: 600; margin-top: 2px; transition: color .4s; }
+
+  .att-row { margin-top: 10px; }
+  .att-bar-bg {
+    height: 8px; border-radius: 4px;
+    background: var(--bg3); overflow: hidden; margin-top: 4px;
+  }
+  .att-bar-fill { height: 100%; border-radius: 4px; transition: width .5s, background .5s; }
+  .att-labels { font-size: 11px; color: var(--text3); display: flex; justify-content: space-between; margin-top: 2px; }
+
+  /* Explain */
+  .explain {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--info);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-size: 13px; line-height: 1.65;
+    color: var(--text2);
+    margin-bottom: 1rem;
+    transition: border-left-color .4s;
+  }
+  .explain strong { color: var(--text); font-weight: 600; }
+
+  /* Formula section */
+  .formula-box {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px; margin-bottom: 1rem;
+  }
+  .formula-title { font-size: 12px; color: var(--text2); margin-bottom: 8px; }
+  .formula {
+    font-family: "Courier New", monospace; font-size: 13px;
+    background: var(--bg3); border-radius: 6px;
+    padding: 8px 12px; color: var(--text); margin-bottom: 6px;
+    border: 1px solid var(--border);
+  }
+  .formula-note { font-size: 12px; color: var(--text2); line-height: 1.5; }
+
+  /* Footer */
+  footer {
+    text-align: center; font-size: 11px; color: var(--text3);
+    margin-top: .5rem; padding-top: .75rem;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+<div class="card">
+
+  <header>
+    <h1>Prueba de Atenuación con Rejilla WiFi</h1>
+    <p>Simulación del efecto de polarización sobre la señal WiFi al rotar una rejilla metálica</p>
+  </header>
+
+  <!-- Scene -->
+  <div class="scene" id="scene">
+    <span class="scene-label">vista lateral del experimento</span>
+    <canvas id="wave-canvas"></canvas>
+
+    <!-- Router -->
+    <div class="router">
+      <div class="router-box">
+        <div class="router-ant"></div>
+        <div class="router-icon">📶</div>
+      </div>
+      <div class="device-lbl">Router</div>
+    </div>
+
+    <!-- Grid element -->
+    <div class="grid-el" id="grid-el" onclick="cycleAngle()" title="Clic para rotar la rejilla">
+      <svg id="grid-svg" width="26" height="88" viewBox="0 0 26 88"
+           style="transition:transform .5s;overflow:visible"></svg>
+      <div class="grid-lbl" id="grid-lbl">0° paralela</div>
+      <div class="grid-hint">clic para rotar</div>
+    </div>
+
+    <!-- dBm badge -->
+    <div class="dbm-badge" id="dbm-badge">−55 dBm</div>
+
+    <!-- Phone -->
+    <div class="phone">
+      <div class="phone-box">
+        <div class="phone-screen">
+          <div class="sig-bars">
+            <div class="sig-bar" id="bar1" style="height:5px"></div>
+            <div class="sig-bar" id="bar2" style="height:9px"></div>
+            <div class="sig-bar" id="bar3" style="height:13px"></div>
+            <div class="sig-bar" id="bar4" style="height:18px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="device-lbl">Celular</div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="ctrl-card">
+      <div class="ctrl-title">Ángulo de la rejilla</div>
+      <div class="angle-row">
+        <button class="angle-btn active" id="btn0"  onclick="setAngle(0)">0° paralela</button>
+        <button class="angle-btn"        id="btn45" onclick="setAngle(45)">45°</button>
+        <button class="angle-btn"        id="btn90" onclick="setAngle(90)">90° perp.</button>
+      </div>
+    </div>
+    <div class="ctrl-card">
+      <div class="ctrl-title">Distancia router → rejilla</div>
+      <div class="dist-row">
+        <input type="range" id="dist-slider" min="1" max="5" value="3" step="1"
+               oninput="setDist(this.value)">
+        <span class="dist-val" id="dist-label">3 m</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="results">
+    <div class="results-title">mediciones — valores típicos de experimento real</div>
+    <div class="results-row">
+      <div class="result-cell">
+        <div class="rc-label">Sin rejilla</div>
+        <div class="rc-val" id="r-base">−55 dBm</div>
+      </div>
+      <div class="result-cell">
+        <div class="rc-label">Con rejilla</div>
+        <div class="rc-val" id="r-with">−68 dBm</div>
+      </div>
+      <div class="result-cell">
+        <div class="rc-label">Atenuación</div>
+        <div class="rc-val" id="r-att">13.0 dB</div>
+      </div>
+      <div class="result-cell">
+        <div class="rc-label">Factor ×</div>
+        <div class="rc-val" id="r-factor">×20</div>
+      </div>
+    </div>
+    <div class="att-row">
+      <div style="font-size:11px;color:var(--text3)">nivel de atenuación relativo</div>
+      <div class="att-bar-bg">
+        <div class="att-bar-fill" id="att-bar" style="width:93%;background:#a32d2d"></div>
+      </div>
+      <div class="att-labels"><span>baja</span><span>alta</span></div>
+    </div>
+  </div>
+
+  <!-- Explanation -->
+  <div class="explain" id="explain-box">
+    <strong>Rejilla paralela (0°):</strong> las barras corren en la misma dirección que el campo eléctrico. Los electrones libres del metal se mueven a lo largo de toda la barra, generando corrientes intensas que absorben la energía de la onda. Resultado: <strong>atenuación máxima</strong>.
+  </div>
+
+  <!-- Formula -->
+  <div class="formula-box">
+    <div class="formula-title">cálculo de atenuación</div>
+    <div class="formula" id="formula-line">Δ = (−55) − (−68) = 13 dB → potencia real: ×20 menor</div>
+    <div class="formula-note">
+      P(dBm) = 10 × log₁₀(P_mW / 1 mW) &nbsp;|&nbsp;
+      +3 dB ≈ doble de potencia &nbsp;|&nbsp; −10 dB = potencia ÷10
+    </div>
+  </div>
+
+  <footer>
+    Experimento de Polarización WiFi · Ondas Electromagnéticas · abre sin internet
+  </footer>
+</div>
+
+<script>
+  const BASE_DBM   = { 1:-50, 2:-53, 3:-55, 4:-58, 5:-62 };
+  const ATT_ANGLE  = { 0:13, 45:6.5, 90:2 };
+  const EXPLAINS   = {
+    0:  '<strong>Rejilla paralela (0°):</strong> las barras corren en la misma dirección que el campo eléctrico. Los electrones libres del metal se mueven a lo largo de toda la barra, generando corrientes intensas que absorben la energía de la onda. Resultado: <strong>atenuación máxima</strong>.',
+    45: '<strong>Rejilla a 45°:</strong> el campo eléctrico tiene componentes tanto paralelas como perpendiculares a las barras. Los electrones se mueven parcialmente. La ley de Malus predice I = I₀ · cos²(45°) ≈ <strong>50% de la potencia pasa</strong>. Atenuación intermedia.',
+    90: '<strong>Rejilla perpendicular (90°):</strong> las barras son perpendiculares al campo eléctrico. Los electrones solo pueden moverse el ancho de la barra (muy pequeño), corrientes mínimas. La onda cruza con poca pérdida: <strong>atenuación mínima</strong>.'
+  };
+  const BORDER_COLORS = { 0:'#a32d2d', 45:'#854f0b', 90:'#3b6d11' };
+
+  let curAngle = 0;
+  let curDist  = 3;
+  let phase    = 0;
+
+  const canvas = document.getElementById('wave-canvas');
+  const ctx    = canvas.getContext('2d');
+  const scene  = document.getElementById('scene');
+
+  function resize() {
+    canvas.width  = scene.offsetWidth;
+    canvas.height = scene.offsetHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ── Grid SVG ──────────────────────────────────────────
+  function drawGridSVG() {
+    const svg = document.getElementById('grid-svg');
+    svg.innerHTML = '';
+    const bars = 7;
+    for (let i = 0; i < bars; i++) {
+      const y = 6 + i * 12;
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1','1'); line.setAttribute('y1', y);
+      line.setAttribute('x2','25'); line.setAttribute('y2', y);
+      line.setAttribute('stroke','currentColor');
+      line.setAttribute('stroke-width','3.5');
+      line.setAttribute('stroke-linecap','round');
+      svg.appendChild(line);
+    }
+    svg.style.transform = `rotate(${curAngle}deg)`;
+  }
+
+  // ── Wave animation ────────────────────────────────────
+  function waveLoop() {
+    const W = canvas.width, H = canvas.height;
+    const cy = H / 2;
+    const rx = 76;
+    const gx = W / 2;
+    const px = W - 72;
+    const att = ATT_ANGLE[curAngle];
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Left waves (router → grid)
+    for (let i = 0; i < 5; i++) {
+      const t = ((phase / 55 + i / 5) % 1);
+      const x = rx + t * (gx - rx - 14);
+      const amp = 20;
+      const alpha = 0.55 - t * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(x, cy - amp); ctx.lineTo(x, cy + amp);
+      ctx.strokeStyle = `rgba(55,138,221,${alpha.toFixed(2)})`;
+      ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    // Right waves (grid → phone, attenuated)
+    const ampR = Math.max(3, 20 * (1 - att / 15));
+    const alphaBase = Math.max(0.08, 1 - att / 14);
+    for (let i = 0; i < 5; i++) {
+      const t = ((phase / 55 + i / 5) % 1);
+      const x = gx + 16 + t * (px - gx - 32);
+      const alpha = alphaBase * (0.55 - t * 0.25);
+      const rr = Math.round(55  + (att / 13) * 190);
+      const gg = Math.round(138 - (att / 13) * 90);
+      const bb = Math.round(221 - (att / 13) * 40);
+      ctx.beginPath();
+      ctx.moveTo(x, cy - ampR); ctx.lineTo(x, cy + ampR);
+      ctx.strokeStyle = `rgba(${rr},${gg},${bb},${alpha.toFixed(2)})`;
+      ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    phase = (phase + 1) % 55;
+    requestAnimationFrame(waveLoop);
+  }
+
+  // ── Update UI ─────────────────────────────────────────
+  function update() {
+    const base = BASE_DBM[curDist];
+    const att  = ATT_ANGLE[curAngle];
+    const withVal = base - att;
+    const factor  = Math.round(Math.pow(10, att / 10));
+
+    // dBm badge
+    const badge = document.getElementById('dbm-badge');
+    badge.textContent = withVal + ' dBm';
+    badge.style.color = att > 10 ? '#a32d2d' : att > 5 ? '#854f0b' : '#3b6d11';
+
+    // Result cells
+    document.getElementById('r-base').textContent   = base + ' dBm';
+    document.getElementById('r-with').textContent   = withVal + ' dBm';
+    document.getElementById('r-with').style.color   = att > 10 ? '#a32d2d' : att > 5 ? '#854f0b' : '#3b6d11';
+    document.getElementById('r-att').textContent    = att.toFixed(1) + ' dB';
+    document.getElementById('r-att').style.color    = att > 10 ? '#a32d2d' : att > 5 ? '#854f0b' : '#3b6d11';
+    document.getElementById('r-factor').textContent = '×' + factor;
+
+    // Attenuation bar
+    const pct = Math.round((att / 14) * 100);
+    const bar = document.getElementById('att-bar');
+    bar.style.width      = pct + '%';
+    bar.style.background = att > 10 ? '#a32d2d' : att > 5 ? '#854f0b' : '#3b6d11';
+
+    // Signal bars
+    const activeCount = att > 10 ? 1 : att > 6 ? 2 : att > 3 ? 3 : 4;
+    const col = att > 10 ? '#a32d2d' : att > 5 ? '#854f0b' : '#3b6d11';
+    [1,2,3,4].forEach(i => {
+      const b = document.getElementById('bar' + i);
+      b.style.background = i <= activeCount ? col : '#cccccc';
+    });
+
+    // Explain box
+    document.getElementById('explain-box').innerHTML = EXPLAINS[curAngle];
+    document.getElementById('explain-box').style.borderLeftColor = BORDER_COLORS[curAngle];
+
+    // Formula line
+    document.getElementById('formula-line').textContent =
+      `Δ = (${base}) − (${withVal}) = ${att.toFixed(1)} dB → potencia real: ×${factor} menor`;
+
+    // Grid label
+    const lbls = { 0:'0° paralela', 45:'45°', 90:'90° perpendicular' };
+    document.getElementById('grid-lbl').textContent = lbls[curAngle];
+  }
+
+  // ── Public controls ───────────────────────────────────
+  function setAngle(a) {
+    curAngle = a;
+    ['btn0','btn45','btn90'].forEach(id => document.getElementById(id).classList.remove('active'));
+    const map = { 0:'btn0', 45:'btn45', 90:'btn90' };
+    document.getElementById(map[a]).classList.add('active');
+    drawGridSVG();
+    update();
+  }
+
+  function setDist(v) {
+    curDist = Number(v);
+    document.getElementById('dist-label').textContent = v + ' m';
+    update();
+  }
+
+  function cycleAngle() {
+    const next = { 0:45, 45:90, 90:0 };
+    setAngle(next[curAngle]);
+  }
+
+  // ── Init ─────────────────────────────────────────────
+  drawGridSVG();
+  update();
+  waveLoop();
+</script>
+</body>
+</html>
